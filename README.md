@@ -1,10 +1,11 @@
 # Directory Tree Challenge
 
-Python app that simulates a user inputting commands to a terminal manipulating a filesystem.
+Python command-line app that simulates a user inputting commands to a terminal manipulating a filesystem. It uses a Trie like data structure to represent the filesystem as nested dictionaries.
 
-# Installation
+It has been tested on Python 3.7 and 3.8.
 
-# Running Tests
-```
-$ python -m unittest discover
+## How to run
+
+```bash
+python filesystem_sim.py
 ```

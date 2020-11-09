@@ -1,104 +1,127 @@
-from typing import Dict, List, Set, Tuple, Union
+from __future__ import annotations
+from typing import Dict, List, Optional, Tuple
 
 
 class FileSystem():
 
     def __init__(self):
-        self.root: Directory = None
+        self.repo: DirectoryTree = DirectoryTree()
         self.seperator = '/'
+        self.tab = '  '
 
     def process_command(self, command_str: str) -> str:
         command = tuple([x.strip() for x in command_str.split(' ')])
         action = command[0]
 
         if action == 'LIST':
-            return f'LIST\n{self.list()}'
+            return self.list()
         if action == 'CREATE':
-            if self.create(command[1]) is None:
-                return command_str
-            return f'error creating directory {command[1]}'
+            self.create(command[1])
+            return command_str
         if action == 'MOVE':
-            pass
+            message = self.move(command[1], command[2])
+            if message:
+                return f'{command_str}\n{message}'
+            return command_str
         if action == 'DELETE':
-            return self.delete(command[1])
+            message = self.delete(command[1])
+            if message:
+                return f'{command_str}{message}'
+            return command_str
 
     def list(self) -> str:
-        if self.root:
-            return str(self.root)
-        return ''
+        return f'LIST\n{self.repo.get_as_string(default_tab=self.tab)}'
 
-    def create(self, path: str) -> str:
-        if not self.root:
-            self.root = Directory(path)
-            return None
+    def create(self, path: str) -> None:
+        path_parts = path.split(self.seperator)
+        self.repo.add_directory(path_parts)
 
-        dir_names = path.split(self.seperator)
-        self.root.add_directory(dir_names)
-        return None
-
-    def delete(self, path: str) -> str:
-        path_to_delete = path.split(self.seperator)
-        (message, removed) = self.root.remove_directory(path_to_delete)
+    def delete(self, path: str) -> Optional[str]:
+        path_parts = path.split(self.seperator)
+        (removed, message) = self.repo.delete_directory(path_parts)
         if not removed:
             return f'Cannot delete {path} - \n{message} does not exist'
-        return ''
+        return None
 
+    def move(self, src_path: str, dest_path: str) -> Optional[str]:
+        src_parts = src_path.split(self.seperator)
+        src_name = src_parts[-1]
+        src_dir = self.repo.find(src_parts)
+        if not src_dir:
+            return f'Cannot move {src_path}'
 
-class Directory():
+        dest_dir = self.repo.find(dest_path.split(self.seperator))
+        if not dest_dir:
+            return f'Cannot move {dest_path}'
 
-    def __init__(self, dir_name: str):
-        self.name: str = dir_name
-        self.subdirs: Dict(str, Directory) = {}
-
-    def add_directory(self, dir_names: List[str]) -> str:
-        """Adds a subdirectory to the current directory. The new directory is the last element in the dir_names arg.
-
-        Args:
-            dir_names (List[str]): path to the new directory as a list
-
-        Returns:
-            str: will be empty if directory added successfully, otherwise it will return the first
-            directory that could not be found in this directory's subdirs.
-        """
-        if self.name != dir_names[0]:
-            return dir_names[0]
-
-        first_subdir = dir_names[1]
-
-        # If the path is only two items then we add the sub-directory
-        if len(dir_names) == 2:
-            self.subdirs[first_subdir] = Directory(first_subdir)
-            return None
-        if len(dir_names) > 2:
-            if first_subdir in self.subdirs:
-                return self.subdirs[first_subdir].add_subdirectory(dir_names[1:])
-            else:
-                return first_subdir
+        src_parent = self.repo.find(src_parts[:len(src_parts)-1])
+        dest_dir.subdirs[src_name] = src_parent.subdirs.pop(src_name)
 
         return None
 
-    def remove_directory(self, path_to_remove: List[str]):
-        if self.name != path_to_remove[0]:
-            return path_to_remove[0], False
 
-        first_subdir = path_to_remove[1]
-        if len(path_to_remove) == 2:
+class Directory:
+
+    def __init__(self):
+        self.subdirs: Dict[str, Directory] = {}
+
+    def is_leaf(self):
+        return bool(self.subdirs)
+
+
+class DirectoryTree:
+    def __init__(self):
+        self.root = Directory()
+
+    def find(self, path_parts: List[str]) -> Optional[Directory]:
+        dir = self.root
+        for part in path_parts:
+            if part not in dir.subdirs:
+                return None
+            dir = dir.subdirs[part]
+        return dir
+
+    def add_directory(self, path_parts: List[str]) -> None:
+        dir = self.root
+        for part in path_parts:
+            if part not in dir.subdirs:
+                dir.subdirs[part] = Directory()
+            dir = dir.subdirs[part]
+
+    def delete_directory(self, path_parts: List[str]) -> Tuple[bool, str]:
+        if len(path_parts) == 1:
             try:
-                return self.subdirs.pop(first_subdir).name, True
+                self.root.subdirs[path_parts[0]] = {}
             except KeyError:
-                return first_subdir, False
-        if len(path_to_remove) > 2:
-            if first_subdir in self.subdirs:
-                return self.subdirs[first_subdir].remove_directory(path_to_remove[1:]), True
+                return False, path_parts[0]
 
-        return first_subdir, False
+        parent_path = path_parts[:len(path_parts)-1]
+        parent = self.find(parent_path)
+        if not parent:
+            return False, parent_path[0]
+        dir_to_delete = path_parts.pop()
+        if dir_to_delete in parent.subdirs:
+            del parent.subdirs[dir_to_delete]
+            return True, dir_to_delete
+        return False, dir_to_delete
 
-    def __str__(self) -> str:
-        output = self.name
+    def get_as_string(self, default_tab: str) -> str:
 
-        # add indentation if a leaf subdir, otherwise recurse
-        if not self.subdirs:
-            return f'  {output}'
-        for subdir in self.subdirs.values():
-            output = f'{output}\n  {str(subdir)}'
-        return output
+        def _get_as_string(root: Directory, depth: int) -> List[str]:
+            tree = []
+            tab = self._get_multiple_tab(depth, default_tab)
+            for name, dir in root.subdirs.items():
+                if dir.is_leaf:
+                    tree.append(f'{tab}{name}')
+                for subtree in _get_as_string(dir, depth+1):
+                    tree.append(subtree)
+            return tree
+
+        return '\n'.join(_get_as_string(self.root, 0))
+
+    @staticmethod
+    def _get_multiple_tab(depth: int, default_tab: str):
+        tab = ''
+        for i in range(depth):
+            tab = f'{default_tab}{tab}'
+        return tab

@@ -3,6 +3,14 @@ from typing import Dict, List, Optional, Tuple
 
 
 class FileSystem():
+    """Supports four basic operations on a file system. It contains a repo parameter that allows the
+    data structure to be switched out as long as the repo class implements the appropriate methods:
+        -find(path_parts: List[str])
+        -add_directory(path_parts: List[str])
+        -delete_directory(path_parts: List[str])
+        -get_as_string(default_tab: str)
+    where path_parts is the path split into a list and default_tab is the tab width represented in a string.
+    """
 
     def __init__(self):
         self.repo: DirectoryTree = DirectoryTree()
@@ -89,12 +97,6 @@ class DirectoryTree:
             dir = dir.subdirs[part]
 
     def delete_directory(self, path_parts: List[str]) -> Tuple[bool, str]:
-        if len(path_parts) == 1:
-            try:
-                self.root.subdirs[path_parts[0]] = {}
-            except KeyError:
-                return False, path_parts[0]
-
         parent_path = path_parts[:len(path_parts)-1]
         parent = self.find(parent_path)
         if not parent:
